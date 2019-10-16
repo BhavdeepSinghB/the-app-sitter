@@ -68,16 +68,18 @@ int main(int argc, char** argv) {
     //Counting number of processes required and creating an array of that many structs
     int processCounter = 0;
     for(int i = 1; i<argc; i++) {
-        if(strcmp(argv[i], ".") == 0) {
+        while(strcmp(argv[i], ".") == 0) {
             if(i == argc - 1) {
                 break;
             }
+            i++;
+        }
+                    /*
             if(strcmp(argv[i+1], ".") == 0) {
                 printf("True");
-                break;
-            }
+                continue;
+            }*/
             processCounter++;
-        }
     }
     processCounter++; //Extra for last process
     const int noProcesses = processCounter;

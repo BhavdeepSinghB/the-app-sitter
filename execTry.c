@@ -18,36 +18,39 @@ struct someProcess {
     int arglength;
 };
 
-void execute(struct someProcess proc) {
-    if((proc.PID = fork()) < 0) {
+void execute(struct someProcess* proc, int p[]) {
+    if((proc->PID = fork()) < 0) {
         printf("Error in forking");
         return;
     }
-    else if(proc.PID == 0) {
+    else if(proc->PID == 0) {
         //char* outName = strcat(("%d", proc.number), ".out"
         //Count number of digits in the process number
-        int procNumber = proc.number;
+        int procNumber = proc->number;
         int charSize = 1;
         while(procNumber != 0) {
             charSize++;
             procNumber /= 10;
         }
-        //Outfile buffer with snprintf, then open the file and dup2 
+        //Outfile buffer with snprintf, then open the file and dup2
         char outBuf[charSize + 5]; //+5 fpr .out\0
-        snprintf(outBuf, sizeof(outBuf), "%d.out", proc.number);
+        snprintf(outBuf, sizeof(outBuf), "%d.out", proc->number);
         int outFile = open(outBuf , O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
         dup2(outFile, 1);
         close(outFile);
-        
-        //Error file buffer with snprintf, then open the file and dup2 
+
+        //Error file buffer with snprintf, then open the file and dup2
         char errBuf[charSize + 5]; //+5 for .err\0
-        snprintf(errBuf, sizeof(errBuf), "%d.err", proc.number);
+        snprintf(errBuf, sizeof(errBuf), "%d.err", proc->number);
         int errorFile = open(errBuf, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
         dup2(errorFile, 2);
         close(errorFile);
-        
 
-        int e = execvp(proc.command, proc.arguments);
+        /*
+        write(p[1], &(proc->PID), sizeof(proc->PID)); 
+        close(p[1]); 
+        */
+        int e = execvp(proc->command, proc->arguments);
         if(e == -1) {
             //TODO: Write to files
             printf("Execution error\n");
@@ -60,6 +63,8 @@ int main(int argc, char** argv) {
     time_t start_t, end_t;
     double diff_t;
     time(&start_t);
+    int p[2], nbytes;
+    pipe(p);
     //Counting number of processes required and creating an array of that many structs
     int processCounter = 0;
     for(int i = 1; i<argc; i++) {
@@ -68,6 +73,7 @@ int main(int argc, char** argv) {
                 break;
             }
             if(strcmp(argv[i+1], ".") == 0) {
+                printf("True");
                 break;
             }
             processCounter++;
@@ -109,32 +115,60 @@ int main(int argc, char** argv) {
         time(&(proc[spawnedProcesses].startTime));
         proc[spawnedProcesses].number = spawnedProcesses;
         //printf("%f\n", (double)proc[spawnedProcesses].startTime);
-        execute(proc[spawnedProcesses]);
+        execute(&proc[spawnedProcesses], p);
+        /*
+        pid_t returnedPID;
+        read(p[0], &returnedPID, sizeof(returnedPID)); 
+        printf("Returned PID %ld\n", (long)returnedPID); 
+        close(p[0]);
+        */
+    }
+    /*
+    for(int index = 0; index < processCounter; index++) {
+        proc[index].PID = wait(&(proc[index].status));
 
     }
+    for(int j = 0; j<processCounter; j++) {
 
+    }
+    */
+    int index = 0;
     //Wait for processes
-    while(processCounter > 0) {
-        proc[processCounter - 1].PID = wait(&(proc[processCounter - 1].status));
-        time(&(proc[processCounter - 1].endTime));
-        //printf("%f\n", (double)proc[processCounter - 1].endTime);
-        proc[processCounter - 1].diff_time = (double)difftime(proc[processCounter - 1].endTime, proc[processCounter - 1].startTime);
-        printf("Child with PID %ld exited with status 0x%x.\n", (long)proc[processCounter - 1].PID, proc[processCounter - 1].status);
-        if(proc[processCounter - 1].diff_time > 2.0) {
-            //Restart process
-            execute(proc[processCounter - 1]);
-            continue;
-        }
-        else {
-            free(proc[processCounter - 1].command);
-            for(int i = 0; i<proc[processCounter].arglength; i++) {
-                free(proc[processCounter - 1].arguments[i]);
+    //printf("%ld\n", (long)proc[0].PID);
+    while(index < processCounter) {
+        //proc[index].PID =
+        pid_t returnedPID = wait(&(proc[index].status));
+        //Check for PID in Array
+        int thisIndex = 0;
+        for(int m = 0; m < processCounter; m++) {
+            if(proc[m].PID == returnedPID) {
+                //Assign end time
+                time(&(proc[m].endTime));
+                thisIndex = m;
+                proc[thisIndex].diff_time = (double)difftime(proc[thisIndex].endTime, proc[thisIndex].startTime);
+                printf("%d\n", thisIndex);
+                printf("Child with PID %ld exited with status %x.\n", (long)proc[thisIndex].PID, proc[thisIndex].status);
+                printf("%f\n", proc[thisIndex].diff_time);
+                if(proc[thisIndex].diff_time >= (double)2) {
+                    //Restart process
+                    printf("Restarting process: %s\n", proc[thisIndex].command);
+                    time(&(proc[thisIndex].startTime));
+                    execute(&proc[thisIndex], p);
+                    continue;
+                }
+                else {
+                    free(proc[thisIndex].command);
+                    for(int i = 0; i<proc[thisIndex].arglength; i++) {
+                        free(proc[thisIndex].arguments[i]);
+                    }
+                    free(proc[thisIndex].arguments);
+                    index++;
+                }
             }
-            free(proc[processCounter - 1].arguments);
-            --processCounter;
-        }
 
+        }
     }
+
     free(proc);
     time(&end_t);
     diff_t = difftime(end_t, start_t);
